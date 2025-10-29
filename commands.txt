@@ -1,7 +1,2 @@
-# Allow the built-in web listener to bind to port 8080
 netsh http add urlacl url=http://+:8080/ user=Everyone
-
-# Open the Windows Firewall for TCP 8080 (LAN only)
 netsh advfirewall firewall add rule name="Reforger Web Button" dir=in action=allow protocol=TCP localport=8080
-
-powershell -ExecutionPolicy Bypass -File .\webbutton.ps1
