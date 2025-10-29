@@ -1,3 +1,69 @@
-netsh http add urlacl url=http://+:8080/ user=Everyone
-netsh advfirewall firewall add rule name="Reforger Web Button" dir=in action=allow protocol=TCP localport=8080
-powershell -ExecutionPolicy Bypass -File .\webbutton.ps1
+# If you have winget (Windows 10/11):
+winget install -e --id Python.Python.3
+
+# Then install Flask:
+py -m pip install flask
+
+# launch.ps1
+Set-Location "C:\Program Files (x86)\Steam\steamapps\common\Arma Reforger Server"
+Start-Process -FilePath ".\ArmaReforgerServer.exe" -ArgumentList "-config Configs\config.json" -WindowStyle Hidden
+
+from flask import Flask, render_template_string, jsonify
+import os, subprocess, shlex
+
+# >>> EDIT THIS PATH <<<
+SCRIPT = r"C:\Program Files (x86)\Steam\steamapps\common\Arma Reforger Server\launch.ps1"
+
+HTML = """
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Arma Reforger – Launch</title>
+<div style="font-family:system-ui;display:flex;min-height:100vh;align-items:center;justify-content:center;background:#0f172a;color:#e2e8f0">
+  <div style="background:#111827;padding:24px;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.3);text-align:center;max-width:460px">
+    <h2>Arma Reforger Server</h2>
+    <p>Click to run the server start script.</p>
+    <button id="run" style="padding:12px 18px;border:0;border-radius:10px;background:#10b981;color:#03201a;font-size:16px;cursor:pointer">Run launch.ps1</button>
+    <pre id="log" style="text-align:left;margin-top:16px;white-space:pre-wrap;font-family:ui-monospace,Consolas,monospace"></pre>
+  </div>
+</div>
+<script>
+  const btn = document.getElementById('run');
+  const log = document.getElementById('log');
+  btn.onclick = async () => {
+    btn.disabled = true; log.textContent = 'Starting...';
+    try {
+      const r = await fetch('/run', { method: 'POST' });
+      const j = await r.json();
+      log.textContent = j.status === 'ok' ? `Started. PID: ${j.pid}` : `Error: ${j.error}`;
+    } catch(e) { log.textContent = 'Request failed: ' + e; }
+    btn.disabled = false;
+  };
+</script>
+"""
+
+app = Flask(__name__)
+
+@app.get("/")
+def index():
+    return render_template_string(HTML)
+
+@app.post("/run")
+def run():
+    try:
+        if not os.path.exists(SCRIPT):
+            return jsonify(status="error", error=f"Script not found: {SCRIPT}"), 500
+
+        # Run PowerShell with a temporary policy bypass; hide console window.
+        # 0x08000000 = CREATE_NO_WINDOW (Windows)
+        p = subprocess.Popen(
+            ["powershell", "-ExecutionPolicy", "Bypass", "-File", SCRIPT],
+            creationflags=0x08000000
+        )
+        return jsonify(status="ok", pid=p.pid)
+    except Exception as e:
+        return jsonify(status="error", error=str(e)), 500
+
+if __name__ == "__main__":
+    # Listen on all interfaces so other machines on your LAN can reach it
+    app.run(host="0.0.0.0", port=8080, debug=False)
